@@ -1,12 +1,26 @@
-import requests, os, json, random
+import json
+import random
+from functools import wraps
+
+import requests
 import pandas as pd
 import numpy as np
 
 
-def testquery(url, db_eng, datatype, retrieveby, filters, gpt_model, openai_client, request_method = 'post'):
+def add_exception_context(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            raise RuntimeError(f"Exception while executing {func.__name__}") from exc
+
+    return wrapper
+
+
+@add_exception_context
+def testquery(url, db_eng, datatype, retrieveby, filters, request_method = 'post'):
     
-    # easier to type
-    client = openai_client
 
     assert isinstance(filters, (str, dict)), "filters must be a json string or a dictionary"
 
@@ -27,93 +41,15 @@ def testquery(url, db_eng, datatype, retrieveby, filters, gpt_model, openai_clie
     api_record_count = nrows
     sql = response.get('sql')
 
-    try:
-        df = pd.read_sql(sql, db_eng)
-        dbexecute_error = None
-        manual_execution_record_count = len(df)
-        counts_match = api_record_count == manual_execution_record_count
-    except Exception as e:
-        print("Exception executing sql query")
-        print(e)
-        dbexecute_error = str(e)
-        manual_execution_record_count = None
-        counts_match = None
 
-    # Ask the robot what it thinks
-    robot_system_prompt = """
-        Your job is to help me understand if SQL queries make sense and tell me what it looks like it is trying to accomplish. 
-        Please also identify syntax errors or problems with the SQL query.
-        Your response MUST BE A VALID JSON STRING in the following format (as my python script will parse your response using json.loads):
-        
-        Below is what an example response must look like:
-        
-        {
-            "has_syntax_error": A boolean - True or False,
-            "appears_correct" : A boolean - True or False,
-            "assessment": A string containting your overall opinion and/or assessment about the SQL query
-        }
-        
-    """
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "system",
-                "content": robot_system_prompt,
-            },
-            {
-                "role": "user",
-                "content": f"Does this query appear to accomplish what it looks like it is set out to do? Are there syntax errors? {sql}\n Please give a response in a json format.",
-            }
-        ],
-        model=gpt_model
-    )
 
-    robot_assessment = [m.message.content for m in chat_completion.choices if m.message.role == 'assistant']
-    robot_assessment = robot_assessment[0] if len(robot_assessment) > 0 else ''
-    print("robot_assessment")
-    print(robot_assessment)
-
-    print(json.loads(robot_assessment))
-    
-    
-    human_sql_translation_chat = client.chat.completions.create(
-        messages=[
-            {
-                "role": "system",
-                "content": "Given a SQL statement, provide a sentence (or series of sentences) in english which would be a request that would promp a data engineer to generate the query",
-            },
-            {
-                "role": "user",
-                "content": f"What would be a request a person might make if they were trying to query this data from the database? {sql}",
-            }
-        ],
-        model=gpt_model
-    )
-
-    human_sql_translation = [m.message.content for m in human_sql_translation_chat.choices if m.message.role == 'assistant']
-    human_sql_translation = human_sql_translation[0] if len(human_sql_translation) > 0 else ''
-    
-    # make it a dictionary
-    robot_assessment = json.loads(robot_assessment)
     
     report = {
         "request_body_json": json.dumps(requestbody),
         "endpoint_tested": url,
         "request_method": request_method,
         "data_returned": returned_data is not None,
-        "counts_match": counts_match,
-        "api_record_count" : api_record_count,
-        "manual_execution_record_count" : manual_execution_record_count,
-        "dbexecute_error" : dbexecute_error,
-        "chatgpt_syntax_assessment": 'Pass' if (robot_assessment.get('has_syntax_error') == False) \
-            else 'Fail' if (robot_assessment.get('has_syntax_error') == True) \
-            else 'Unable to determine' ,
-        "chatgpt_sql_assessment": 'Fail' if (robot_assessment.get('appears_correct') == False) \
-            else 'Pass' if (robot_assessment.get('appears_correct') == True) \
-            else 'Unable to determine' ,
-        "chatgpt_sql_opinion": robot_assessment.get('assessment') ,
-        "chatgpt_human_prompt": human_sql_translation,
-        "sql": sql
+        "api_record_count" : api_record_count
     }
 
     return report
@@ -122,6 +58,7 @@ def testquery(url, db_eng, datatype, retrieveby, filters, gpt_model, openai_clie
 
 
 # To be used in the generate_random_filterparams
+@add_exception_context
 def getrandomvals(data):
     print("in getrandomvals")
     print("data")
@@ -147,11 +84,11 @@ def getrandomvals(data):
     return {selected_key: selected_values}
 
 
-
+@add_exception_context
 def generate_random_filterparams(
     datatype = 'Chemistry',
-    initial_request_endpoint = 'https://data.sccwrp.org/bightquery/interactive_sql-unified.php',
-    interactive_endpoint = 'https://data.sccwrp.org/bightquery/lookup_sql-unified.php',
+    initial_request_endpoint = 'https://data.sccwrp.org/bightquery/api/initFilters.php',
+    interactive_endpoint = 'https://data.sccwrp.org/bightquery/api/updateFilters.php',
     retrieveby = 'whole', 
     max_iterations = 3
 ):
@@ -175,7 +112,12 @@ def generate_random_filterparams(
         if i == 0:
 
             # initial call to interactive sql
+            print("initial_request_endpoint")
+            print(initial_request_endpoint)
             resp = requests.get(initial_request_endpoint, data=requestbody)
+
+            print("resp")
+            print(resp)
 
             filterparams = resp.json()
 
@@ -191,7 +133,12 @@ def generate_random_filterparams(
             if (retrieveby == 'whole') and (filterparams.get('stationid') is not None):
                 del filterparams['stationid']
                 
+            print('filterparams')
+            print(filterparams)
+
             lookup_elements = getrandomvals(filterparams)
+
+
 
             requestbody['lookup_elements'] = json.dumps(lookup_elements)
 
