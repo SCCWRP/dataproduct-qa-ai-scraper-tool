@@ -150,8 +150,8 @@ def getrandomvals(data):
 
 def generate_random_filterparams(
     datatype = 'Chemistry',
-    initial_request_endpoint = 'https://data.sccwrp.org/bightquery/interactive_sql-unified.php',
-    interactive_endpoint = 'https://data.sccwrp.org/bightquery/lookup_sql-unified.php',
+    initial_request_endpoint = 'https://data.sccwrp.org/bightquery/interactive_sql-unified2.php',
+    interactive_endpoint = 'https://data.sccwrp.org/bightquery/lookup_sql-unified2.php',
     retrieveby = 'whole', 
     max_iterations = 3
 ):
@@ -175,7 +175,7 @@ def generate_random_filterparams(
         if i == 0:
 
             # initial call to interactive sql
-            resp = requests.get(initial_request_endpoint, data=requestbody)
+            resp = requests.get(initial_request_endpoint, params=requestbody)
 
             filterparams = resp.json()
 
