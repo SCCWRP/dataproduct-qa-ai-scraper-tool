@@ -1,3 +1,6 @@
 __pycache__/
 docker/deploy.sh
 testing/
+.Rhistory
+.Rproj.user/
+dataproduct-qa-ai-scraper-tool.Rproj
