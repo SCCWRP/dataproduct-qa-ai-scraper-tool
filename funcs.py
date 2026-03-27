@@ -1,4 +1,4 @@
-import requests, os, json, random
+import requests, os, json, random, io
 import pandas as pd
 import numpy as np
 
@@ -150,7 +150,7 @@ def getrandomvals(data):
 
 def generate_random_filterparams(
     datatype = 'Chemistry',
-    initial_request_endpoint = 'https://data.sccwrp.org/bightquery/interactive_sql-unified2.php',
+    initial_request_endpoint = 'https://data.sccwrp.org/bightquery/api/v2/data/download.php',
     interactive_endpoint = 'https://data.sccwrp.org/bightquery/lookup_sql-unified2.php',
     retrieveby = 'whole', 
     max_iterations = 3
@@ -175,10 +175,13 @@ def generate_random_filterparams(
         if i == 0:
 
             # initial call to interactive sql
-            resp = requests.get(initial_request_endpoint, params=requestbody)
+            resp = requests.post(initial_request_endpoint, json=requestbody)
 
-            filterparams = resp.json()
+            print("STATUS:", resp.status_code)
+            print("URL:", resp.url)
+            print("RESPONSE (first 300 chars):", repr(resp.text[:300]))
 
+            filterparams = pd.read_csv(io.StringIO(resp.text))
             # This is how the json response was set up - not using specific names, but rather numbers
             # these are what they represent when retrieving by whole datasets
             filterparams['stratum'] = filterparams.pop('field1')
